@@ -1,0 +1,131 @@
+import matplotlib.pyplot as plt
+import time
+from matplotlib.colors import ListedColormap
+from keras import backend as K
+#import draw_model
+import data
+import robustness_calculator
+import draw_robustness
+import os
+import numpy as np
+import keras
+from keras.datasets import mnist
+from keras.utils import np_utils
+from keras.models import Sequential
+from keras.models import load_model
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+from keras.optimizers import Adam
+import draw_high
+import os
+
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='1' # 这是默认的显示等级，显示所有信息
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='2' # 只显示 warning 和 Error
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='3'
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+#gpu_options = tf.compat.v1.GPUOptions(allow_growth=True)
+
+#sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+
+
+count_correct_close_list = []
+count_wrong_list = []
+rand_list = []
+model_robustness_list = []
+iter_no_list = []
+test_accuracy_list = []
+model_orig_robustness_list = []
+time_total = 0
+time_orig_total = 0
+
+
+radius = data.radius
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = 2
+count_train = int(0.8*count_data)
+count_test = int(0.2*count_data)
+
+data_attack = np.empty((0, count_feature+1))
+data_orig = data.data_orig
+for eps in np.linspace(1, 10, 10)/10:
+    np.vstack((data_attack, np.load('data_fgsm'+str(eps)+'.npy')))
+
+x_train_orig = data_orig[:-count_test, 0:count_feature]
+x_train = x_train_orig
+x_test = data_orig[-count_test:, 0:count_feature]
+y_train_orig = data_orig[:-count_test, count_feature]
+y_train = y_train_orig
+y_test_orig = data_orig[-count_test:, count_feature]
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+#data_train_orig = np.hstack((x_train_orig, y_train_orig.reshape(count_train, 1), np.arange(1, count_train+1, 1).reshape(count_train, 1), data.radius*np.ones((count_train, 1)), 10*np.ones((count_train, 1))))
+data_train_orig = data_orig[0: count_train, :]
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+count_column = data_train_orig[0, :].size
+
+model = Sequential()
+model.add(Conv2D(input_shape=(8, 8, 1), kernel_size=(5, 5), filters=20, activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model.add(Conv2D(kernel_size=(5, 5), filters=50, activation='relu', padding='same'))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model.add(Flatten())
+model.add(Dense(500, activation='relu'))
+model.add(Dense(2, activation='softmax'))
+model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+
+
+model_orig = Sequential()
+model_orig.add(Conv2D(input_shape=(8, 8, 1), kernel_size=(5, 5), filters=20, activation='relu'))
+model_orig.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model_orig.add(Conv2D(kernel_size=(5, 5), filters=50, activation='relu', padding='same'))
+model_orig.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model_orig.add(Flatten())
+model_orig.add(Dense(500, activation='relu'))
+model_orig.add(Dense(2, activation='softmax'))
+model_orig.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+
+model.load_weights('my_model_weights.h5')
+model_orig.load_weights('my_model_weights.h5')
+
+for iter_no in range(10):
+    y_r = draw_high.draw_high(model, iter_no, 'model')
+    model_robustness = draw_high.robustness_calculator(y_r)
+    #model_robustness = robustness_calculator.robustness_calculator(model, data_orig)
+    print(str(iter_no) + 'model:' + str(model_robustness))
+    model_robustness_list.append(model_robustness)
+
+    time_start = time.time()
+
+    x_attack = data_attack[:, 0:count_feature]
+    y_attack = data_attack[:, count_feature]
+
+    x_train = np.vstack([x_train_orig, x_attack])
+    y_train = np.append(y_train_orig, y_attack)
+
+
+    np.random.seed(iter_no+100)
+    np.random.shuffle(x_train)
+    np.random.seed(iter_no + 100)
+    np.random.shuffle(y_train)
+
+    y_train = keras.utils.to_categorical(y_train, num_classes=count_label)
+    x_train = x_train.reshape(-1, 8, 8, 1)
+    x_test = x_test.reshape(-1, 8, 8, 1)
+    model.fit(x_train, y_train, epochs=2, batch_size=16, validation_data=(x_test, y_test))
+    time_end = time.time()
+    time1 = time_end - time_start
+    time_total = time_total + time1
+    pred_test = model.predict(x_test)
+    pred_test = np.argmax(pred_test, axis=1).reshape(count_test, 1)
+    correct_test = np.equal(y_test_orig.reshape(count_test, 1), pred_test) + 0
+    test_accuracy = correct_test.sum().astype(np.int32) / count_test
+
+    iter_no_list.append(iter_no)
+    time_start = time.time()
+    print(str(iter_no) + 'time:' + str(time_total))
+    print(iter_no)
+
+figure = draw_robustness.draw_robustness_accuracy(iter_no_list, model_orig_robustness_list, model_robustness_list)
+plt.savefig('robustness')
