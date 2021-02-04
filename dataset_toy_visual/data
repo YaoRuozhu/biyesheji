@@ -1,0 +1,69 @@
+#import matplotlib
+#matplotlib.use('Agg')
+import numpy as np
+from sklearn.datasets import load_iris
+import load_luoxuan
+import matplotlib.pyplot as plt
+from sklearn import datasets
+
+radius = 0.15
+bagsize = 10
+
+def autonorm(dataSet):
+    minVals = dataSet.min(0)# 取每一列的最小值
+    maxVals = dataSet.max(0)# 取每一列的最大值
+    ranges = maxVals - minVals
+    normDataSet = np.zeros(np.shape(dataSet))
+    m = dataSet.shape[0]
+    normDataSet = dataSet - np.tile(minVals, (m, 1))
+    normDataSet = normDataSet/np.tile(ranges, (m, 1))
+    return normDataSet
+
+
+x_data, y_data = datasets.make_moons(n_samples=500, noise=0.08)
+#x_data, y_data = datasets.make_circles(n_samples=500, noise=0.04, factor=0.2)
+
+count_data = x_data[:, 0].size
+count_feature = x_data[0, :].size
+count_label = np.unique(y_data).size
+
+x_orig = autonorm(x_data)
+#x_orig = x_data
+y_orig = y_data
+# x y index distance bagsize
+data_orig = np.hstack((x_orig, y_orig.reshape(count_data, 1), np.arange(1, count_data+1, 1).reshape(count_data, 1), radius*np.ones([count_data, 1]), bagsize * np.ones([count_data, 1])))
+
+
+
+# label是j的元素分类到data——j里面
+data = [i for i in range(count_label)]
+std = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+4))
+for i in range(0, count_data):
+    for j in range(count_label):
+        if data_orig[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_orig[i, :]))
+
+
+#data[1] = data[1] - np.hstack([np.tile(np.zeros([50, 1]), [1, 4]), np.ones([50, 1]), np.zeros([50, 1]), np.zeros([50, 1]), np.zeros([50, 1])])
+#data[2] = data[2] - np.hstack([np.tile(np.zeros([50, 1]), [1, 4]), np.ones([50, 1]), np.zeros([50, 1]), np.zeros([50, 1]), np.zeros([50, 1])])
+data_orig = np.vstack([data[0], data[1]])
+a = data_orig[:, 0].reshape(count_data, 1)
+b = data_orig[:, 1].reshape(count_data, 1)
+x_data = np.hstack((a, b))
+x_data = autonorm(x_data)
+c = data_orig[:, 2:]
+data_orig = np.hstack((x_data, c))
+#for j in range(count_label):
+    #data[j] = (data[j])[:, 2:6]
+
+np.random.seed(116)
+np.random.shuffle(data_orig)
+
+#count_data = int(count_data*2/3)
+#count_label = int(count_label*2/3)
+#count_feature = 2
+#bound = np.hstack((bound[1], bound[2]))
+
+ro = np.load('bambrobust.npy')
