@@ -1,0 +1,274 @@
+import numpy as np
+import tensorflow as tf
+import data
+import os
+import keras
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+#gpu_options = tf.compat.v1.GPUOptions(allow_growth=True)
+
+#sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='1' # 这是默认的显示等级，显示所有信息
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='2' # 只显示 warning 和 Error
+os.environ["TF_CPP_MIN_LOG_LEVEL"]='3'
+
+from keras.models import load_model
+import time
+
+
+
+
+#model = load_model('my_model.h5')
+count_label = 2
+count_feature = data.count_feature
+#bagsize = 200
+count_data = data.count_data
+num_eval = 178
+data_orig = data.data_orig
+#data_orig = data_orig[0: 1000, :]
+#count_data = 1000
+#num_eval = 0.01 * count_data
+data = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+4))
+for i in range(0, count_data):
+    for j in range(2):
+        if data_orig[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_orig[i, :]))
+
+
+
+# 生成point附近以r为半径的随机点
+def point_generator11(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    centor1, centor2 = np.array(point[0]), np.array(point[1])
+    theta = np.random.uniform(0, 1, bagsize) * 2 * np.pi
+    r = np.random.uniform(0, R**2, bagsize)
+    matrix1 = centor1 + np.cos(theta) * (r ** 0.5)
+    matrix2 = centor2 + np.sin(theta) * (r ** 0.5)
+    points = np.hstack([matrix1.reshape([bagsize, 1]), matrix2.reshape([bagsize, 1])])
+    points = points[(points[:, 0] > 0) & (points[:, 1] > 0) & (points[:, 0] < 1) & (points[:, 1] < 1)]
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points, pred_points, bagsize_real
+
+
+# 生成point附近以2*r/(n^0.5)为边长的n维正方体分布随机点
+def point_generator1(model, point, R, bagsize):
+    from_image = point[0: count_feature]
+    bagsize = bagsize.astype(np.int)
+    n = bagsize
+    #R = R / (count_feature ** 0.5)
+    eps = R
+    to_images = [from_image] * n
+    to_images_eps = np.random.uniform(low=-eps, high=eps, size=(n,) + np.shape(from_image))
+    to_images = np.array(to_images) + np.array(to_images_eps)
+    to_images_flat = np.maximum(to_images, -1)
+    to_images_flat = np.minimum(to_images_flat, 1)
+
+    to_images = to_images_flat.reshape(-1, 28, 28, 1)
+    pred_points = model.predict(to_images)
+    if to_images_flat.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return to_images_flat, pred_points, bagsize_real
+
+
+def point_generator2(model, point, R, bagsize):
+    point = point[0: count_feature]
+    bagsize = bagsize.astype(np.int)
+    R = R / (count_feature ** 0.5)
+    points_flat = np.empty((0, count_feature))
+    a = (np.arange(bagsize) + 1) / bagsize
+    R = 2 * R * (a - 0.5)
+    for i in range(bagsize):
+        r = R[i] * np.ones((1, count_feature))
+        p = point + r
+        points_flat = np.vstack((points_flat, p))
+    points = points_flat.reshape(-1, 28, 28, 1)
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points_flat, pred_points, bagsize_real
+
+
+def point_generator(model, point, R, bagsize):
+    point = point[0: count_feature]
+    bagsize = bagsize.astype(np.int)
+    R = R / (count_feature ** 0.5)
+    points_flat = np.empty((0, count_feature))
+    for i in range(bagsize):
+        a = i / bagsize * R
+        b = (i + 1) / bagsize * R
+        te = np.random.uniform(low=a, high=b, size=(1, count_feature))
+        #te = 1 + np.random.uniform(low=a, high=b, size=(1, count_feature))
+        r = te * np.random.choice([-1, 1], size=(1, count_feature), replace=True, p=None)
+        p = point.reshape(1, count_feature) + r
+        #p = point.reshape(1, count_feature) + r
+        p[p >= 1] = 1
+        p[p <= 0] = 0
+        points_flat = np.vstack((points_flat, p))
+    points = points_flat.reshape(-1, 8, 8, 1)
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points_flat, pred_points, bagsize_real
+# point点对应的robustness，也就是距离边界最远距离
+
+
+def bag_generator(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    points, pred_points, bagsize_real =point_generator(model, point, R, np.array(bagsize))
+    pred_point = model.predict(point[0: count_feature].reshape(-1, 8, 8, 1))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    pred_point = np.tile(pred_point, [bagsize_real, 1]).astype(np.int)
+    bag = np.hstack([points, pred_point])
+    return bag
+
+def point_robustness1(model, point):
+    iter_no = 0
+    pred_point = model.predict(point[2:4].reshape(1, 2))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    if pred_point == point[4]:
+        R_old = 1
+    else:
+        R_old = -1
+    R_new = 0
+    pred_point = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+    while (abs(R_old - R_new) > 1e-2) and iter_no <= 100:
+        _, pred_new = point_generator(model, point, R_old)
+        if (pred_new == pred_point).all():
+            R_new = R_old * 1.1
+        else:
+            R_new = R_old * 0.9
+        R_old = R_new
+        iter_no += 1
+    return R_new
+
+
+# point点对应的robustness，也就是距离边界最远距离，如果被分类错误，则鲁棒性为负。
+def point_robustness(model, point):
+    log_eps_min = -np.inf
+    log_eps_max = np.inf
+    pred_point = model.predict(point[0:count_feature].reshape(-1, 8, 8, 1))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    log_eps = np.log(28)
+    if pred_point == point[count_feature]:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(np.exp(log_eps)))
+
+        eps = np.exp(log_eps)
+        #print('next image')
+    else:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(-np.exp(log_eps)))
+        if np.exp(log_eps) >= 8:
+            log_eps = np.log(8)
+        eps = -np.exp(log_eps)
+        #print('next image')
+    return eps, points[-1, :]
+
+
+def robustness_list_full(model, data):
+    R_list = np.empty((0, 1))
+    count_data = np.size(data, 0)
+    for i in range(count_data):
+        R, _ = point_robustness(model, data[i, :])
+        R_list = np.vstack((R_list, R))
+    return R_list
+
+
+def robustness_list(model, data):
+    R_list = robustness_list_full(model, data)
+    #R_list = R_list[R_list>0]
+    R_list = R_list.flatten()
+    R_list = np.sort(R_list, axis=-1)
+    return R_list
+
+
+def robustness_calculator1(model):
+    R_list = np.ones((1, count_data))
+    R_list = R_list[0, 0: int(num_eval)]
+    for i in range(2):
+        r_list = robustness_list(model, data[i])
+        r_list = r_list[: int(num_eval)]
+        R_list = R_list * r_list
+    index = (1 / num_eval) * np.arange(num_eval) + 2
+    robustness = np.sum(R_list / (index ** 10))
+    return robustness
+
+def robustness_calculator(model):
+    R_list = np.ones((1, count_data))
+    R_list = R_list[0, 0: int(num_eval)]
+    for i in range(2):
+        r_list = robustness_list(model, data[i])
+        r_list = r_list[: int(num_eval)]
+        R_list = R_list * r_list
+    #index = (1 / num_eval) * np.arange(num_eval) + 2
+    #robustness = np.sum(R_list / (index ** 10))
+    index = (1 / num_eval) * np.arange(num_eval) + 1
+    robustness = np.sum(R_list / (index ** 2))/(num_eval/250)*4
+    return robustness
+
+#data = data[0]
+#point = data[5, :]
+#m=np.max(point)
+R = 1
+bagsize = np.array(5)
+eps = 2
+n = 4
+#points_flat, pred_points, bagsize_real = point_generator(model, point, R, bagsize)
+#points_flat = bag_generator(model, point, R, bagsize)
+time0 = time.time()
+#lis = robustness_list(model, data)
+#ro = robustness_calculator(model)
+#R_new, p = point_robustness(model, point)
+time1 = time.time()
+t = time1-time0
+#time0 = time.time()
+#time1 = time.time()
+#time = time1-time0
+#pred_point = model.predict(point[0:count_feature].reshape(-1, 28, 28, 1))
+#pred_point = np.argmax(pred_point).astype(np.int)
+#if pred_point == point[count_feature]:
+    #R_old = 28
+#else:
+    #R_old = -28
+#iter_no = 0
+#R_new = 0
+#pred_point_new = np.empty((0, 2))
