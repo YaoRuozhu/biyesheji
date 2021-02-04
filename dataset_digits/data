@@ -1,0 +1,69 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn import datasets, svm, metrics
+
+digits = datasets.load_digits()
+
+bagsize = 10
+r_change = 0.75
+def autonorm(dataSet):
+    minVals = dataSet.min(0)# 取每一列的最小值
+    maxVals = dataSet.max(0)# 取每一列的最大值
+    ranges = maxVals - minVals
+    normDataSet = np.zeros(np.shape(dataSet))
+    m = dataSet.shape[0]
+    normDataSet = dataSet - np.tile(minVals, (m, 1))
+    normDataSet = normDataSet/np.tile(ranges, (m, 1))
+    return normDataSet
+
+radius = 5
+
+x_data, y_data = digits.data, digits.target
+
+count_data = x_data[:, 0].size
+count_feature = x_data[0, :].size
+count_label = np.unique(y_data).size
+
+#x_orig = autonorm(x_data)
+x_orig = x_data/16
+#x_orig = x_data
+y_orig = y_data
+# x y index distance bagsize
+data_orig = np.hstack((x_orig, y_orig.reshape(count_data, 1), np.arange(1, count_data+1, 1).reshape(count_data, 1), radius*np.ones([count_data, 1]), bagsize * np.ones([count_data, 1])))
+
+
+
+# label是j的元素分类到data——j里面
+data = [i for i in range(count_label)]
+std = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+4))
+for i in range(0, count_data):
+    for j in range(count_label):
+        if data_orig[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_orig[i, :]))
+#data[1] = data[1] - np.hstack([np.tile(np.zeros([50, 1]), [1, 4]), np.ones([50, 1]), np.zeros([50, 1]), np.zeros([50, 1]), np.zeros([50, 1])])
+#data[2] = data[2] - np.hstack([np.tile(np.zeros([50, 1]), [1, 4]), np.ones([50, 1]), np.zeros([50, 1]), np.zeros([50, 1]), np.zeros([50, 1])])
+data_orig = np.vstack([data[0], data[1]])
+count_data = data_orig[:, 0].size
+a = data_orig[:, 0].reshape(count_data, 1)
+b = data_orig[:, 1].reshape(count_data, 1)
+x_data = np.hstack((a, b))
+#x_data = autonorm(x_data)
+c = data_orig[:, 2:]
+data_orig = np.hstack((x_data, c))
+#for j in range(count_label):
+    #data[j] = (data[j])[:, 2:6]
+
+np.random.seed(116)
+np.random.shuffle(data_orig)
+
+#data_show = np.empty((0, count_feature))
+#label_show = np.empty((0, 1))
+#a = np.random.randint(0, 360, (360, 1))
+#for i in a:
+  #point = data_orig[i, 0: count_feature]
+  #label = data_orig[i, count_feature]
+  #data_show = np.vstack((data_show, point))
+  #label_show = np.vstack((label_show, label))
+data_show = data_orig[:, 0: count_feature+1]
