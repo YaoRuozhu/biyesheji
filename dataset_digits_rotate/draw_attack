@@ -1,0 +1,39 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import data
+import robustness_calculator
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+
+model = Sequential()
+model.add(Conv2D(input_shape=(28, 28, 1), kernel_size=(5, 5), filters=20, activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model.add(Conv2D(kernel_size=(5, 5), filters=50, activation='relu', padding='same'))
+model.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model.add(Flatten())
+model.add(Dense(500, activation='relu'))
+model.add(Dense(10, activation='softmax'))
+model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+model.load_weights('my_model_weights.h5')
+
+
+
+count_feature = data.count_feature
+count_data = data.count_data
+data_orig = data.data_orig
+
+
+r, c = 5, 5
+fig, axs = plt.subplots(r, c)
+a = np.random.randint(0, count_data, 5)
+for i in range(5):
+    point = data_orig[a[i], :]
+    bag, pred_points, bagsize = robustness_calculator.point_generator(model, point, 1, point[-1])
+    point_image = point[0: count_feature].reshape([28, 28])
+    axs[i, 0].imshow(point_image, cmap=plt.cm.gray)
+    axs[i, 0].axis('off')
+    for k in range(bagsize):
+        bag_image = bag[k, 0: count_feature].reshape([28, 28])
+        axs[i, k+1].imshow(bag_image, cmap=plt.cm.gray)
+        axs[i, k+1].axis('off')
+plt.show()
