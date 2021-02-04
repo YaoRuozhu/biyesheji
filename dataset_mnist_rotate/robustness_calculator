@@ -1,0 +1,162 @@
+from matplotlib.patches import Ellipse, Circle
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn import manifold, datasets
+import data
+from keras.models import load_model
+from PIL import Image
+import math
+import cv2
+
+
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = 2
+data_orig = data.data_orig
+count_show = data_orig[:, 0].size
+data_orig = data.data_orig
+
+
+num_eval = 100
+
+
+
+
+def point_generator1(model, point, R, bagsize):
+    point = point[0: count_feature]
+    bagsize = bagsize.astype(np.int)
+    R = R / (count_feature ** 0.5)
+    points_flat = np.empty((0, count_feature))
+    for i in range(bagsize):
+        a = i / bagsize * R
+        b = (i + 1) / bagsize * R
+        #te = np.random.uniform(low=a, high=b, size=(1, count_feature))
+        #te = 1 + np.random.uniform(low=a, high=b, size=(1, count_feature))
+        te = np.random.rand(1, count_feature)*(b-a)+a
+        r = te * np.random.choice([-1, 1], size=(1, count_feature), replace=True, p=None)
+        p = point.reshape(1, count_feature) + r
+        #p = point.reshape(1, count_feature) + r
+        p[p >= 1] = 1
+        p[p <= 0] = 0
+        points_flat = np.vstack((points_flat, p))
+    points = points_flat.reshape(-1, 28, 28, 1)
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points_flat, pred_points, bagsize_real
+
+def point_generator(model, point, degree, bagsize):
+    point = point[0: count_feature].reshape(28, 28)
+    bagsize = bagsize.astype(np.int)
+    points_flat = np.empty((0, count_feature))
+    for i in range(bagsize):
+        b = (i + 1) / bagsize * degree
+        M = cv2.getRotationMatrix2D((14, 14), (b * np.random.choice([-1, 1])), 1.0)
+        p = cv2.warpAffine(point, M, (28, 28))
+        #r = te * np.random.choice([-1, 1], size=(1, count_feature), replace=True, p=None)
+        p = p.reshape(1, count_feature)
+        p[p >= 1] = 1
+        p[p <= 0] = 0
+        points_flat = np.vstack((points_flat, p))
+    points = points_flat.reshape(-1, 28, 28, 1)
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points_flat, pred_points, bagsize_real
+
+
+def bag_generator(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    points, pred_points, bagsize_real =point_generator(model, point, R, np.array(bagsize))
+    pred_point = model.predict(point[0: count_feature].reshape(-1, 28, 28, 1))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    pred_point = np.tile(pred_point, [bagsize_real, 1]).astype(np.int)
+    bag = np.hstack([points, pred_point])
+    return bag
+
+
+def point_robustness(model, point):
+    log_eps_min = -np.inf
+    log_eps_max = np.inf
+    pred_point = model.predict(point[0:count_feature].reshape(-1, 28, 28, 1))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    log_eps = np.log(180)
+    if pred_point == point[count_feature]:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(np.exp(log_eps)))
+        if np.exp(log_eps) >= 180:
+            log_eps = np.log(180)
+        eps = np.exp(log_eps)
+        eps = np.exp(log_eps)
+        #print('next image')
+    else:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(-np.exp(log_eps)))
+        if np.exp(log_eps) >= 180:
+            log_eps = np.log(180)
+        eps = -np.exp(log_eps)
+        #print('next image')
+    return eps, points[-1, :]
+
+
+
+def robustness_list_full(model, data):
+    R_list = np.empty((0, 1))
+    count_data = np.size(data, 0)
+    for i in range(count_data):
+        R, _ = point_robustness(model, data[i, :])
+        R_list = np.vstack((R_list, R))
+    return R_list
+
+def robustness_calculator(model, data):
+    y=data[:, count_feature]
+    R_lis = robustness_list_full(model, data)
+    y_r = np.hstack((y.reshape(count_show, 1), R_lis))
+    R_list = [i for i in range(count_label)]
+    for j in range(count_label):
+        R_list[j] = np.empty((0, 1))
+    for j in range(count_label):
+        for i in range(0, count_show):
+            if y_r[i, 0] == j:
+                R_list[j] = np.vstack((R_list[j], y_r[i, 1]))
+        R_list[j] = (R_list[j])[R_list[j] > 0]
+        R_list[j] = np.sort(R_list[j], axis=-1)
+    r_list = np.ones((1, count_show))
+    r_list = r_list[0, 0: int(num_eval)]
+    for i in range(count_label):
+        R_list[i] = (R_list[i]).flatten()
+        R_list[i] = R_list[i][: int(num_eval)]
+        r_list = R_list[i] * r_list
+    index = (1 / num_eval) * np.arange(num_eval) + 2
+    robustness = np.sum(r_list / (index ** 10))*50
+    return robustness
+
+#model = load_model('my_model.h5')
+#im = data_orig[6, 0:count_feature].reshape(-1, 28, 28, 1)
+#bagsize = np.array(data.bagsize)
+#degree=data.radius
+#point = data_orig[7, 0:count_feature].reshape(28, 28)
