@@ -1,0 +1,12 @@
+import matplotlib.pyplot as plt
+
+
+def draw_robustness_accuracy(iter_no_list, model_orig_robustness_list, model_robustness_list): #, test_accuracy_list):
+    figure = plt.figure()
+    plt.plot(iter_no_list, model_orig_robustness_list, 'b', label='model_orig_robustness')
+    plt.plot(iter_no_list, model_robustness_list, 'r', label='model-robustness')
+    #plt.plot(iter_no_list, test_accuracy_list, 'g', label='test-accuracy')
+    plt.grid(True)
+    plt.xlabel('iter_no')
+    plt.legend(loc="lower right")
+    return figure
