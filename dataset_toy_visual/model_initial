@@ -1,0 +1,51 @@
+import tensorflow as tf
+import keras as keras
+import keras.layers as layers
+from keras.models import Sequential
+import sklearn.datasets as datasets
+from keras.layers import Dense
+import data
+import draw_model
+import numpy as np
+import robustness_calculator
+
+
+data_orig = data.data_orig
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = data.count_label
+count_train = int(0.99*count_data)
+count_test = int(0.01*count_data)
+
+x_train_orig = data_orig[:-count_test, 0:count_feature]
+x_train = x_train_orig
+x_test = data_orig[-count_test:, 0:count_feature]
+y_train_orig = data_orig[:-count_test, count_feature]
+y_train = y_train_orig
+y_test_orig = data_orig[-count_test:, count_feature]
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+data_train_orig = np.hstack((x_train_orig, y_train_orig.reshape(count_train, 1), np.arange(1, count_train+1, 1).reshape(count_train, 1), data.radius*np.ones((count_train, 1)), data.bagsize*np.ones((count_train, 1))))
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+count_column = data_train_orig[0, :].size
+
+model0 = Sequential()
+model0.add(Dense(15, activation='relu', input_dim=count_feature))
+model0.add(Dense(15, activation='relu'))
+model0.add(Dense(15, activation='relu'))
+model0.add(Dense(15, activation='relu'))
+model0.add(Dense(15, activation='relu'))
+model0.add(Dense(15, activation='relu'))
+model0.add(Dense(15, activation='relu'))
+
+
+model0.add(Dense(count_label, activation='softmax'))
+model0.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+callback = keras.callbacks.EarlyStopping(monitor='acc', patience=500, verbose=0, mode='auto')
+model0.fit(x_train, y_orig, epochs=250, batch_size=32, validation_data=(x_test, y_test), callbacks=[callback])
+
+draw_model.draw(model0, 9, 'model_orig')
+model_robustness = robustness_calculator.robustness_calculator(model0)
+print(str(0) + 'model:' + str(model_robustness))
+model0.save_weights('my_model1_weights.h5')
