@@ -1,0 +1,200 @@
+import tensorflow as tf
+import keras as keras
+import keras.layers as layers
+from keras.models import Sequential
+import sklearn.datasets as datasets
+from keras.layers import Dense
+from sklearn.datasets import load_iris
+from sklearn import tree
+import numpy as np
+from matplotlib.colors import ListedColormap
+from keras import backend as K
+import draw_model
+import data
+import robustness_calculator
+import draw_robustness
+import time
+
+time_total = 0
+time_orig_total = 0
+
+count_correct_close_list = []
+count_wrong_list = []
+rand_list = []
+model_robustness_list = []
+iter_no_list = []
+test_accuracy_list = []
+model_orig_robustness_list = []
+model_flat_list = []
+model_flat_orig_list = []
+
+
+data_orig = data.data_orig
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = data.count_label
+count_train = int(0.8*count_data)
+count_test = int(0.2*count_data)
+#history = draw_model.history
+
+
+x_train_orig = data_orig[:-count_test, 0:count_feature]
+x_train = x_train_orig
+x_test = data_orig[-count_test:, 0:count_feature]
+y_train_orig = data_orig[:-count_test, count_feature]
+y_train = y_train_orig
+y_test_orig = data_orig[-count_test:, count_feature]
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+data_train_orig = np.hstack((x_train_orig, y_train_orig.reshape(count_train, 1), np.arange(1, count_train+1, 1).reshape(count_train, 1), data.radius*np.ones((count_train, 1)), data.bagsize*np.ones((count_train, 1))))
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+count_column = data_train_orig[0, :].size
+
+
+
+
+
+model = Sequential()
+model.add(Dense(15, activation='relu', input_dim=count_feature))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(count_label, activation='softmax'))
+model.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+model_orig = Sequential()
+model_orig.add(Dense(15, activation='relu', input_dim=count_feature))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(count_label, activation='softmax'))
+model_orig.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+
+model.load_weights('my_model1_weights.h5')
+model_orig.load_weights('my_model1_weights.h5')
+
+for iter_no in range(15):
+
+
+
+    time_start = time.time()
+    # 找到分类错误点
+    pred_orig = model.predict(x_train_orig)
+    pred_orig = np.argmax(pred_orig, axis=1).reshape(count_train, 1)
+    correct = np.equal(y_train_orig.reshape(count_train, 1), pred_orig)+0
+    wrong = np.ones((count_train, 1))-correct
+    index = np.arange(1, count_train+1).reshape(count_train, 1).flatten()
+    # 算出分类正确、错误的点的编号
+    no_wrong = wrong.flatten()*index
+    no_correct = correct.flatten()*index
+    # 将分类正确错误的点分别放在两个点集合中
+    class_wrong = np.empty([0, count_column])
+    class_correct = np.empty([0, count_column])
+
+    new_correct_close = np.empty((0, count_feature+1))
+    new_correct_far = np.empty((0, count_feature+1))
+    new_wrong_close = np.empty((0, count_feature+1))
+    new_wrong_far = np.empty((0, count_feature+1))
+
+    count_correct_close = 0
+    count_correct_far = 0
+    count_wrong_close = 0
+    count_wrong_far = 0
+
+    for value in no_wrong:
+        if value != 0:
+            point = data_train_orig[int(value)-1, :]
+            _, pred_points, _ = robustness_calculator.point_generator(model, point, point[4], np.array(10))
+            pred_point = model.predict(point[0:count_feature].reshape(1, count_feature))
+            pred_point = np.argmax(pred_point).astype(np.int)
+            if (pred_points == pred_point).all():
+                data_train_orig[int(value)-1, :][4] = data_train_orig[int(value)-1, :][4]*1.1
+                data_train_orig[int(value) - 1, :][5] = data_train_orig[int(value)-1, :][5]+3
+                point = data_train_orig[int(value) - 1, :]
+                bag_wrong_far = robustness_calculator.bag_generator(model, point, point[4], point[5])
+                new_wrong_far = np.append(new_wrong_far, bag_wrong_far, axis=0)
+                count_wrong_far += 1
+            else:
+                data_train_orig[int(value) - 1, :][4] = data_train_orig[int(value) - 1, :][4] * 0.9
+                data_train_orig[int(value) - 1, :][5] = data_train_orig[int(value) - 1, :][5] + 2
+                point = data_train_orig[int(value) - 1, :]
+                bag_wrong_close = robustness_calculator.bag_generator(model, point, point[4], point[5])
+                new_wrong_close = np.append(new_wrong_close, bag_wrong_close, axis=0)
+                count_wrong_close += 1
+            class_wrong = np.append(class_wrong, point.reshape(1, count_column), axis=0)
+
+
+    for value in no_correct:
+        if value != 0:
+            point = data_train_orig[int(value) - 1, :]
+            if point[5] <= 1:
+                continue
+            _, pred_points, _ = robustness_calculator.point_generator(model, point, point[4], np.array(10))
+            pred_point = model.predict(point[0:count_feature].reshape(1, count_feature))
+            pred_point = np.argmax(pred_point).astype(np.int)
+            if (pred_points == pred_point).all():
+                if data_train_orig[int(value) - 1, :][5] > 2:
+                    data_train_orig[int(value) - 1, :][5] = data_train_orig[int(value) - 1, :][5] - 1
+                    data_train_orig[int(value) - 1, :][4] = data_train_orig[int(value) - 1, :][4] * 1.1
+                    point = data_train_orig[int(value) - 1, :]
+                    bag_correct_far = robustness_calculator.bag_generator(model, point, point[4], point[5])
+                    new_correct_far = np.append(new_correct_far, bag_correct_far, axis=0)
+                count_correct_far += 1
+            else:
+                data_train_orig[int(value) - 1, :][4] = data_train_orig[int(value) - 1, :][4] * 0.9
+                data_train_orig[int(value) - 1, :][5] = data_train_orig[int(value) - 1, :][5] + 1
+                point = data_train_orig[int(value) - 1, :]
+                bag_correct_close = robustness_calculator.bag_generator(model, point, point[4], point[5])
+                new_correct_close = np.append(new_correct_close, bag_correct_close, axis=0)
+                count_correct_close += 1
+            class_correct = np.append(class_correct, point.reshape(1, count_column), axis=0)
+
+    data_attack = np.vstack((new_wrong_close, new_wrong_far, new_correct_close, new_correct_far))#.reshape(count_attack, count_column)
+    x_attack = data_attack[:, 0:count_feature]
+    y_attack = data_attack[:, count_feature]
+
+    x_train = np.vstack([x_train_orig, x_attack])
+    y_train = np.append(y_train_orig, y_attack)
+
+    np.random.seed(iter_no+100)
+    np.random.shuffle(x_train)
+    np.random.seed(iter_no + 100)
+    np.random.shuffle(y_train)
+
+    y_train = keras.utils.to_categorical(y_train, num_classes=count_label)
+    #model.fit(x_train, y_train, epochs=8, batch_size=32, validation_data=(x_test, y_test))
+    time_end = time.time()
+    time1 = time_end - time_start
+    time_total = time_total + time1
+    pred_test = model.predict(x_train_orig)
+    pred_test = np.argmax(pred_test, axis=1).reshape(count_train, 1)
+    correct_test = np.equal(y_train_orig.reshape(count_train, 1), pred_test) + 0
+    test_accuracy = correct_test.sum().astype(np.int32) / count_train
+
+    iter_no_list.append(iter_no)
+    time_start = time.time()
+    model_orig.fit(x_train_orig, y_orig, epochs=8, batch_size=32, validation_data=(x_test, y_test))
+    test_accuracy_list.append(test_accuracy)
+    time_end = time.time()
+    time_orig = time_end - time_start
+    time_orig_total = time_orig + time_orig_total
+
+    #draw_model.draw(model, iter_no, 'model')
+    draw_model.draw(model_orig, iter_no, 'model_orig')
+    #model_robustness = robustness_calculator.robustness_calculator(model)
+    #print(str(iter_no) + 'model:' + str(model_robustness))
+    #model_robustness_list.append(model_robustness)
+    #model_orig_robustness = robustness_calculator.robustness_calculator(model_orig)
+    #print(str(iter_no) + 'model_orig:' + str(model_orig_robustness))
+    #model_orig_robustness_list.append(model_orig_robustness)
+
+    #print(str(iter_no) + 'time:' + str(time_total))
+    #print(str(iter_no) + 'time_orig:' + str(time_orig_total))
+    #print(iter_no)
+#np.save('bambrobust.npy', model_robustness_list)
+#np.save('origrobust.npy', model_orig_robustness_list)
+#draw_robustness.draw_robustness_accuracy(iter_no_list, model_orig_robustness_list, model_robustness_list)
