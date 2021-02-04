@@ -1,0 +1,43 @@
+import tensorflow as tf
+import data
+import os
+import numpy as np
+import keras
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+#gpu_options = tf.compat.v1.GPUOptions(allow_growth=True)
+
+#sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = data.count_label
+count_train = 50000
+count_test = 10000
+
+x_train_orig = data.train_data
+x_train = data.train_data
+x_test = data.test_data
+y_train_orig = data.train_labels
+y_train = y_train_orig
+y_test_orig = data.test_labels
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+
+model0 = Sequential()
+model0.add(Conv2D(input_shape=(28, 28, 1), kernel_size=(5, 5), filters=20, activation='relu'))
+model0.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model0.add(Conv2D(kernel_size=(5, 5), filters=50, activation='relu', padding='same'))
+model0.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model0.add(Flatten())
+model0.add(Dense(500, activation='relu'))
+model0.add(Dense(10, activation='softmax'))
+model0.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+
+callback = keras.callbacks.EarlyStopping(monitor='acc', patience=50, verbose=0, mode='auto')
+model0.fit(x_train, y_orig, epochs=50, batch_size=64, validation_data=(x_test, y_test), callbacks=[callback])
+model0.save('my_model.h5')
+model0.save_weights('my_model_weights.h5')
