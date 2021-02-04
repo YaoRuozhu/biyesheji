@@ -1,0 +1,57 @@
+import numpy as np
+from sklearn import tree
+from sklearn.datasets import load_iris
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import keras
+import data
+import robustness_calculator
+import keras.layers as layers
+from keras.models import Sequential
+from keras.layers import Dense
+from matplotlib.pyplot import MultipleLocator
+
+count_label = data.count_label
+count_data = data.count_data
+count_feature = data.count_feature
+data_orig = data.data_orig
+#data_orig = np.load('data_fgsm.npy')
+
+data = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+4))
+for i in range(0, count_data):
+    for j in range(2):
+        if data_orig[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_orig[i, :]))
+
+def draw(model, iter_no, model_name):
+    x_min, x_max = 0 - 0.05, 1 + 0.05
+    y_min, y_max = 0 - 0.05, 1 + 0.05
+    h = 0.001
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
+    Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z[:, 1]
+    Z = Z.reshape(xx.shape)
+    Z = Z.reshape(xx.shape)
+    x = (data[1])[:, 0:count_feature]
+    y = (data[1])[:, count_feature]
+    plt.scatter(x[:, 0], x[:, 1], c='r', marker='^')
+    plt.contourf(xx, yy, Z, [0.48, 0.52], colors='g')
+    x = (data[0])[:, 0:count_feature]
+    y = (data[0])[:, count_feature]
+    plt.scatter(x[:, 0], x[:, 1], c='b', marker='o')
+    x_major_locator = MultipleLocator(1)
+    y_major_locator = MultipleLocator(1)
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(x_major_locator)
+    ax.yaxis.set_major_locator(y_major_locator)
+    plt.title(str(iter_no)+' '+model_name)
+    plt.xlim(xx.min(), xx.max())
+    plt.ylim(yy.min(), yy.max())
+    plt.show()
+
+
+
+#model.load_weights('my_model1_weights.h5')
+#draw(model, 0, 'test')
