@@ -1,0 +1,83 @@
+from keras import backend, losses
+import tensorflow as tf
+import numpy as np
+import data
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.models import load_model
+import matplotlib.pyplot as plt
+
+
+count_label = data.count_label
+count_feature = data.count_feature
+model = Sequential()
+model.add(Dense(15, activation='relu', input_dim=count_feature))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+
+model.add(Dense(count_label, activation='softmax'))
+model.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+
+model.load_weights('my_model1_weights.h5')
+data_orig = data.data_orig
+count_feature = data.count_feature
+count_data = data.count_data
+images = data_orig[:, 0:count_feature]#.reshape(-1, count_feature)
+image = images[6, :]
+ys = data_orig[:, count_feature].reshape(count_data, 1)
+
+eps = np.linspace(0, 0.1, 10).reshape(10, -1)
+
+def fgsm_image(model, image, y_true):
+    y_pred = model.output
+
+    # y_true: 目标真实值的张量。
+    # y_pred: 目标预测值的张量。
+    loss = losses.categorical_crossentropy(y_true, y_pred)
+
+    gradient = backend.gradients(loss, model.input)
+    gradient = gradient[0]
+
+
+    adv = np.array(image) + gradient/tf.sqrt(tf.reduce_sum(tf.square(gradient))+1e-8) * eps  # fgsm算法
+
+    sess = backend.get_session()
+    adv = sess.run(adv, feed_dict={model.input: image})  # 注意这里传递参数的情况
+    adv = np.clip(adv, 0, 1)  # 有的像素点会超过255，需要处理
+
+    return adv
+
+def fgsm_data(model):
+    data_fgsm = np.empty((0, count_feature+1))
+    for i in range(count_data):
+        from_image = images[i, :].reshape(-1, count_feature)
+        y = ys[i, 0]
+        to_images = fgsm_image(model, from_image, y)
+        to_images = to_images.reshape(-1, count_feature)
+        y = np.array([y] * 10).reshape(10, 1)
+        data_fgsm = np.vstack((data_fgsm, np.hstack((to_images, y))))
+    np.save('data_fgsm.npy', data_fgsm)
+    return data_fgsm
+
+#fgsm_data(model)
+image = images[5, :].reshape(-1, count_feature)
+y_true = ys[5]
+y_pred = model.output
+
+# y_true: 目标真实值的张量。
+# y_pred: 目标预测值的张量。
+loss = losses.categorical_crossentropy(y_true, y_pred)
+
+gradient = backend.gradients(loss, model.input)
+gradient = gradient[0]
+
+r = gradient/tf.sqrt(tf.reduce_sum(tf.square(gradient))+1e-8)
+adv = np.array(image) + eps*r  # fgsm算法
+
+sess = backend.get_session()
+adv = sess.run(adv, feed_dict={model.input: image})  # 注意这里传递参数的情况
+adv = np.clip(adv, 0, 1)  # 有的像素点会超过255，需要处理
