@@ -1,0 +1,48 @@
+from keras import backend, losses
+import numpy as np
+import data
+from keras.models import load_model
+import matplotlib.pyplot as plt
+
+
+model = load_model('my_model.h5')
+data_orig = data.data_orig
+count_feature = data.count_feature
+count_data = data.count_data
+images = data_orig[:, 0:count_feature].reshape(-1, 8, 8, 1)
+image = images[3, :].reshape(-1, 8, 8, 1)
+ys = data_orig[:, count_feature].reshape(count_data, 1)
+
+
+def fgsm_image(model, image, y_true, eps):
+    y_pred = model.output
+
+    # y_true: 目标真实值的张量。
+    # y_pred: 目标预测值的张量。
+    loss = losses.categorical_crossentropy(y_true, y_pred)
+
+    gradient = backend.gradients(loss, model.input)
+    gradient = gradient[0]
+
+    adv = image + backend.sign(gradient) * eps  # fgsm算法
+
+    sess = backend.get_session()
+    adv = sess.run(adv, feed_dict={model.input: image})  # 注意这里传递参数的情况
+    adv = np.clip(adv, 0, 1)  # 有的像素点会超过255，需要处理
+
+    return adv
+
+def fgsm_data(model, eps):
+    data_fgsm = np.empty((0, count_feature+1))
+    to_images = np.empty((0, count_feature))
+    for i in range(count_data):
+        from_image = images[i, :].reshape(-1, 8, 8, 1)
+        y = ys[i, 0]
+        to_image = fgsm_image(model, from_image, y, eps)
+        to_image = to_image.reshape(1, 64)
+        to_images = np.vstack((to_images, to_image))
+    data_fgsm = np.vstack((data_fgsm, np.hstack((to_images, ys))))
+    np.save('data_fgsm'+str(eps)+'.npy', data_fgsm)
+    return data_fgsm
+
+fgsm_data(model, 1.0)
