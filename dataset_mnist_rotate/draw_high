@@ -1,0 +1,77 @@
+import numpy as np
+from sklearn import manifold, datasets
+import data
+from keras.models import load_model
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+import robustness_calculator
+from matplotlib.patches import Ellipse, Circle
+import matplotlib.pyplot as plt
+
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = data.count_label
+
+X, y = data.data_show, data.label_show
+data_show = np.hstack((X, y))
+n_samples, n_features = X.shape
+
+data = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+1))
+for i in range(0, count_data):
+    for j in range(10):
+        if data_show[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_show[i, :]))
+
+data_show = np.vstack((data[2], data[3]))
+X = data_show[:, 0: 784]
+y = data_show[:, 784]
+count_show = data_show[:, 0].size
+
+
+sample = np.hstack((data_show, np.ones((count_show, 1))))
+R_list = np.empty((0, 1))
+points_sample_flat = np.empty((0, count_feature))
+'''t-SNE'''
+tsne = manifold.TSNE(n_components=2, init='pca', random_state=501)
+X_tsne = tsne.fit_transform(X)
+
+x_min, x_max = X_tsne.min(0), X_tsne.max(0)
+X_norm = (X_tsne - x_min) / (x_max - x_min)  # 归一化
+
+
+model = load_model('my_model.h5')
+
+
+def draw_high(model, iter_no, model_name):
+    global y
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    y = y.flatten()
+    for i in range(X_norm.shape[0]):
+        if y[i] == 2:
+            color = 'r'
+        else:
+            color = 'b'
+        plt.text(X_norm[i, 0], X_norm[i, 1], str(int(y[i])), color=plt.cm.Set1(y[i]),
+                 fontdict={'weight': 'bold', 'size': 9})
+    for i in range(count_show):
+        point = data_show[i, :]
+        R_new, p = robustness_calculator.point_robustness(model, point)
+        sample[i, 785] = R_new
+    sample_tsne = np.hstack((X_norm, y.reshape(count_show, 1), sample[:, 785].reshape(count_show, 1)/400))
+    for i in range(count_show):
+        if sample_tsne[i, 2] == 2:
+            color = 'yellow'
+        else:
+            color = 'green'
+        cir1 = Circle(xy=(sample_tsne[i, 0], sample_tsne[i, 1]), radius=sample_tsne[i, 3], facecolor=color, alpha=0.1)
+        ax.add_patch(cir1)
+    ox, oy = 0, 0
+    ax.plot(ox, oy, 'ro')
+    plt.axis('scaled')
+    plt.axis('equal')
+    plt.axis([-0.1, 1.1, -0.1, 1.1])
+    plt.title(str(iter_no) + ' ' + model_name)
+    plt.show()
