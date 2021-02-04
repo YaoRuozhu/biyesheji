@@ -1,0 +1,78 @@
+import tensorflow as tf
+import keras as keras
+import keras.layers as layers
+from keras.models import Sequential
+import sklearn.datasets as datasets
+from keras.layers import Dense
+from sklearn.datasets import load_iris
+from sklearn import tree
+import numpy as np
+from matplotlib.colors import ListedColormap
+from keras import backend as K
+import draw_model
+import data
+import robustness_calculator
+import draw_robustness
+import time
+
+
+time_total = 0
+time_orig_total = 0
+
+count_correct_close_list = []
+count_wrong_list = []
+rand_list = []
+model_robustness_list = []
+iter_no_list = []
+test_accuracy_list = []
+model_orig_robustness_list = []
+model_flat_list = []
+model_flat_orig_list = []
+
+
+data_orig = data.data_orig
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = data.count_label
+count_train = int(0.8*count_data)
+count_test = int(0.2*count_data)
+#history = draw_model.history
+
+data_attack = np.load('data_fgsm.npy')
+data_orig = data.data_orig
+radius = data.radius
+x_train_orig = data_orig[:-count_test, 0:count_feature]
+x_train = x_train_orig
+x_test = data_orig[-count_test:, 0:count_feature]
+y_train_orig = data_orig[:-count_test, count_feature]
+y_train = y_train_orig
+y_test_orig = data_orig[-count_test:, count_feature]
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+data_train_orig = np.hstack((x_train_orig, y_train_orig.reshape(count_train, 1), np.arange(1, count_train+1, 1).reshape(count_train, 1), data.radius*np.ones((count_train, 1)), data.bagsize*np.ones((count_train, 1))))
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+count_column = data_train_orig[0, :].size
+
+
+
+model = Sequential()
+model.add(Dense(15, activation='relu', input_dim=count_feature))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(15, activation='relu'))
+model.add(Dense(count_label, activation='softmax'))
+model.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+model_orig = Sequential()
+model_orig.add(Dense(15, activation='relu', input_dim=count_feature))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(15, activation='relu'))
+model_orig.add(Dense(count_label, activation='softmax'))
+model_orig.compile(loss='categorical_crossentropy',
+              optimizer='sgd',
+              metrics=['accuracy'])
+
+model.load_weights('my_model1_weights.h5')
