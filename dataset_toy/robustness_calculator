@@ -1,0 +1,165 @@
+import numpy as np
+import data
+
+num_eval = 250
+count_label = data.count_label
+count_feature = data.count_feature
+#bagsize = 200
+count_data = data.count_data
+data_orig = data.data_orig
+data = [i for i in range(count_label)]
+for j in range(count_label):
+    data[j] = np.empty((0, count_feature+4))
+for i in range(0, count_data):
+    for j in range(2):
+        if data_orig[i, count_feature] == j:
+            data[j] = np.vstack((data[j], data_orig[i, :]))
+
+
+# 生成point附近以r为半径的随机点
+def point_generator(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    centor1, centor2 = np.array(point[0]), np.array(point[1])
+    theta = np.random.uniform(0, 1, bagsize) * 2 * np.pi
+    r = np.random.uniform(0, R**2, bagsize)
+    matrix1 = centor1 + np.cos(theta) * (r ** 0.5)
+    matrix2 = centor2 + np.sin(theta) * (r ** 0.5)
+    points = np.hstack([matrix1.reshape([bagsize, 1]), matrix2.reshape([bagsize, 1])])
+    points = points[(points[:, 0] > 0) & (points[:, 1] > 0) & (points[:, 1] < 1) & (points[:, 1] < 1)]
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points, pred_points, bagsize_real
+
+
+def point_edge_generator(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    centor1, centor2 = np.array(point[0]), np.array(point[1])
+    theta = np.random.uniform(0, 1, bagsize) * 2 * np.pi
+    #r = np.random.uniform(0, R**2, bagsize)
+    matrix1 = centor1 + np.cos(theta) * R
+    matrix2 = centor2 + np.sin(theta) * R
+    points = np.hstack([matrix1.reshape([bagsize, 1]), matrix2.reshape([bagsize, 1])])
+    points = points[(points[:, 0] > 0) & (points[:, 1] > 0) & (points[:, 1] < 1) & (points[:, 1] < 1)]
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points, pred_points, bagsize_real
+
+
+def bag_generator(model, point, R, bagsize):
+    bagsize = bagsize.astype(np.int)
+    points, pred_points, bagsize_real = point_generator(model, point, R, np.array(bagsize))
+    pred_point = model.predict(point[0:2].reshape(1, 2))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    pred_point = np.tile(pred_point, [bagsize_real, 1]).astype(np.int)
+    index_point = np.tile(point[count_feature+1], [bagsize_real, 1]).astype(np.int)
+    bag = np.hstack([points, pred_point])#, index_point])
+    return bag
+
+
+# 生成point附近以2*r/(n^0.5)为边长的n维正方体分布随机点
+def point_generator11(model, point, R):
+    R = R/(count_feature**0.5)
+    x = [i for i in range(count_feature)]
+    points = np.empty((bagsize, 0))
+    for i in range(count_feature):
+        x[i] = np.random.uniform(point[i]-R, point[i]+R, bagsize)
+        points = np.hstack([points, x[i].reshape([bagsize, 1])])
+    pred_points = model.predict(points)
+    pred_points = np.argmax(pred_points, axis=1).reshape(bagsize, 1).astype(np.int)
+    return points, pred_points
+# point点对应的robustness，也就是距离边界最远距离
+
+
+def point_robustness1(model, point):
+    iter_no = 0
+    pred_point = model.predict(point[2:4].reshape(1, 2))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    if pred_point == point[4]:
+        R_old = 1
+    else:
+        R_old = -1
+    R_new = 0
+    pred_point = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+    while (abs(R_old - R_new) > 1e-2) and iter_no <= 1000:
+        _, pred_new = point_generator(model, point, R_old)
+        if (pred_new == pred_point).all():
+            R_new = R_old * 1.1
+        else:
+            R_new = R_old * 0.9
+        R_old = R_new
+        iter_no += 1
+    return R_new
+
+
+# point点对应的robustness，也就是距离边界最远距离，如果被分类错误，则鲁棒性为负。
+def point_robustness(model, point):
+    pred_point = model.predict(point[0:count_feature].reshape(1, count_feature))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    if pred_point == point[count_feature]:
+        R_old = 1
+    else:
+        R_old = -1
+    R_new = 0
+    pred_point_new = np.empty((0, 2))
+    for i in range(200):
+        _, pred_new, bagsize = point_generator(model, point, R_old, np.array(100))
+        pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+        if (pred_new == pred_point_new).all():
+            R_new = R_old * 1.1
+        else:
+            R_new = R_old * 0.9
+        if abs(R_old-R_new) < 0.0001:
+            break
+        R_old = R_new
+        if R_old > 1.414:
+            R_old = 1.414
+        elif R_old < -1.414:
+            R_old = -1.414
+    return R_old
+
+
+def robustness_calculator1(model):
+    R_list = []
+    for i in range(count_data):
+        R = point_robustness(model, data_orig[i, :])
+        R_list.append(R)
+    R_list = np.array(R_list).flatten()
+    dataset_robustness = np.average(R_list)
+    return dataset_robustness
+
+
+def robustness_list(model, data):
+    R_list = []
+    count_data = np.size(data, 0)
+    for i in range(count_data):
+        R = point_robustness(model, data[i, :])
+        R_list.append(R)
+    R_list = np.array(R_list).flatten()
+    R_list = np.sort(R_list, axis=-1)
+    return R_list
+
+def robustness_calculator(model):
+    r_list0 = robustness_list(model, data[0])
+    r_list0 = r_list0[: num_eval]
+    r_list1 = robustness_list(model, data[1])
+    r_list1 = r_list1[: num_eval]
+    index = 1/num_eval * np.arange(num_eval) + 1
+    robustness = np.sum((r_list0 * r_list1) / (index ** 2))/num_eval*1000
+    return robustness
+
+
+def robustness_calculator1(model):
+    r_list0 = robustness_list(model, data[0])
+    r_list0 = r_list0[: num_eval]
+    r_list1 = robustness_list(model, data[1])
+    r_list1 = r_list1[: num_eval]
+    robustness = 75*(np.average(r_list0)+np.average(r_list1))/2
+    return robustness
