@@ -1,0 +1,23 @@
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+
+
+train_num = 1000
+train_num = int(train_num/2)
+test_num = 60
+test_num = int(test_num/2)
+
+alpha = 0.4
+belta = 0.5
+theta = np.arange(train_num)/train_num*np.pi
+x0 = ((alpha+belta*theta)*np.cos(theta)+0.5).reshape(train_num, 1)
+y0 = (alpha+belta*theta+0.5)*np.sin(theta)
+z0 = np.zeros((train_num, 1))
+x1 = -((alpha+belta*theta)*np.cos(theta)+0.5).reshape(train_num, 1)
+y1 = -(alpha+belta*theta+0.5)*np.sin(theta)
+z1 = np.ones((train_num, 1))
+plt.figure()
+plt.scatter(x0, y0)
+plt.scatter(x1, y1)
+plt.show()
