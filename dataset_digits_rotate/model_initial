@@ -1,0 +1,43 @@
+import tensorflow as tf
+import data
+import os
+import numpy as np
+import keras
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+import draw_high
+
+data_orig = data.data_orig
+count_feature = 64
+count_data = data.count_data
+count_label = 2
+count_train = int(0.9*count_data)
+count_test = int(0.1*count_data)
+
+x_train_orig = data_orig[:-count_test, 0:count_feature]
+x_train = x_train_orig.reshape(-1, 8, 8, 1)
+x_test = data_orig[-count_test:, 0:count_feature].reshape(-1, 8, 8, 1)
+y_train_orig = data_orig[:-count_test, count_feature]
+y_train = y_train_orig
+y_test_orig = data_orig[-count_test:, count_feature]
+y_test = keras.utils.to_categorical(y_test_orig, num_classes=count_label)
+#data_train_orig = np.hstack((x_train_orig, y_train_orig.reshape(count_train, 1), np.arange(1, count_train+1, 1).reshape(count_train, 1), data.radius*np.ones((count_train, 1)), 10*np.ones((count_train, 1))))
+data_train_orig = data_orig[0: count_train, :]
+y_orig = keras.utils.to_categorical(y_train_orig, num_classes=count_label)
+
+
+model0 = Sequential()
+model0.add(Conv2D(input_shape=(8, 8, 1), kernel_size=(5, 5), filters=20, activation='relu'))
+model0.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model0.add(Conv2D(kernel_size=(5, 5), filters=50, activation='relu', padding='same'))
+model0.add(MaxPooling2D(pool_size=(2, 2), strides=2, padding='same'))
+model0.add(Flatten())
+model0.add(Dense(500, activation='relu'))
+model0.add(Dense(10, activation='softmax'))
+model0.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+
+callback = keras.callbacks.EarlyStopping(monitor='acc', patience=50, verbose=0, mode='auto')
+model0.fit(x_train, y_orig, epochs=10, batch_size=32, validation_data=(x_test, y_test), callbacks=[callback])
+model0.save('my_model1.h5')
+model0.save_weights('my_model1_weights.h5')
+draw_high.draw_high(model0, 0, 'i')
