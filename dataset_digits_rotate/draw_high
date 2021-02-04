@@ -1,0 +1,157 @@
+import numpy as np
+from sklearn import manifold, datasets
+import data
+from keras.models import load_model
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv2D, MaxPooling2D, Flatten
+import robustness_calculator
+from matplotlib.patches import Ellipse, Circle
+import matplotlib.pyplot as plt
+
+count_feature = data.count_feature
+count_data = data.count_data
+count_label = 2
+data_show = data.data_show
+count_show = data_show[:, 0].size
+
+X, y = data_show[:, 0:count_feature], data_show[:, count_feature].reshape(count_show, 1)
+n_samples, n_features = X.shape
+
+#sample = np.hstack((data_show))
+#R_list = np.empty((0, 1))
+points_sample_flat = np.empty((0, count_feature))
+'''t-SNE'''
+tsne = manifold.TSNE(n_components=2, init='pca', random_state=501)
+X_tsne = tsne.fit_transform(X)
+
+x_min, x_max = X_tsne.min(0), X_tsne.max(0)
+X_norm = (X_tsne - x_min) / (x_max - x_min)  # 归一化
+#data_show = np.hstack((X_norm, y))
+
+
+model = load_model('my_model.h5')
+def draw_high(model, iter_no, model_name):
+    global y
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    y = y.flatten()
+    R_lis = robustness_list_full(model, data_show)
+    for i in range(X_norm.shape[0]):
+        plt.text(X_norm[i, 0], X_norm[i, 1], str(int(y[i])), color=plt.cm.Set1(y[i]),
+                 fontdict={'weight': 'bold', 'size': 9})
+    sample_tsne = np.hstack((X_norm, y.reshape(count_show, 1), R_lis / 20))
+    for i in range(count_show):
+        if sample_tsne[i, 2] == 0:
+            color = 'yellow'
+        else:
+            color = 'green'
+        cir1 = Circle(xy=(sample_tsne[i, 0], sample_tsne[i, 1]), radius=sample_tsne[i, 3], facecolor=color, alpha=0.1)
+        ax.add_patch(cir1)
+    ox, oy = 0, 0
+    ax.plot(ox, oy, 'ro')
+    plt.axis('scaled')
+    plt.axis('equal')
+    ax.set(xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
+    plt.title(str(iter_no) + ' ' + model_name)
+    plt.show()
+    y_r = np.hstack((y.reshape(count_show, 1), R_lis))
+    return y_r
+
+
+
+num_eval = 172
+
+def point_generator(model, point, R, bagsize):
+    point = point[0: count_feature]
+    bagsize = bagsize.astype(np.int)
+    R = R / (count_feature ** 0.5)
+    points_flat = np.empty((0, count_feature))
+    for i in range(bagsize):
+        a = i / bagsize * R
+        b = (i + 1) / bagsize * R
+        #te = np.random.uniform(low=a, high=b, size=(1, count_feature))
+        #te = 1 + np.random.uniform(low=a, high=b, size=(1, count_feature))
+        te = np.random.rand(1, count_feature)*(b-a)+a
+        r = te * np.random.choice([-1, 1], size=(1, count_feature), replace=True, p=None)
+        p = point.reshape(1, count_feature) + r
+        #p = point.reshape(1, count_feature) + r
+        p[p >= 1] = 1
+        p[p <= 0] = 0
+        points_flat = np.vstack((points_flat, p))
+    points = points_flat.reshape(-1, 8, 8, 1)
+    pred_points = model.predict(points)
+    if points.size == 0:
+        bagsize_real = 0
+    else:
+        bagsize_real = pred_points[:, 0].size
+        pred_points = np.argmax(pred_points, axis=1).reshape(pred_points[:, 0].size, 1).astype(np.int)
+    return points_flat, pred_points, bagsize_real
+
+def point_robustness(model, point):
+    log_eps_min = -np.inf
+    log_eps_max = np.inf
+    pred_point = model.predict(point[0:count_feature].reshape(-1, 8, 8, 1))
+    pred_point = np.argmax(pred_point).astype(np.int)
+    log_eps = np.log(28)
+    if pred_point == point[count_feature]:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(np.exp(log_eps)))
+
+        eps = np.exp(log_eps)
+        #print('next image')
+    else:
+        for i in range(20):
+            points, pred_new, bagsize = point_generator(model, point, np.exp(log_eps), np.array(102))
+            pred_point_new = np.tile(pred_point, [bagsize, 1]).astype(np.int)
+            if (pred_new == pred_point_new).all():
+                log_eps_min = log_eps
+                log_eps = np.minimum(log_eps + 1, (log_eps_max + log_eps_min) / 2)
+            else:
+                log_eps_max = log_eps
+                log_eps_min = -np.inf if log_eps_max < log_eps_min else np.log(np.exp(log_eps_min) * 0.9)
+                log_eps = np.maximum(log_eps - 1, (log_eps_max + log_eps_min) / 2)
+            #print('get eps: {}'.format(-np.exp(log_eps)))
+        if np.exp(log_eps) >= 8:
+            log_eps = np.log(8)
+        eps = -np.exp(log_eps)
+        #print('next image')
+    return eps, points[-1, :]
+
+
+
+def robustness_list_full(model, data):
+    R_list = np.empty((0, 1))
+    count_data = np.size(data, 0)
+    for i in range(count_data):
+        R, _ = point_robustness(model, data[i, :])
+        R_list = np.vstack((R_list, R))
+    return R_list
+
+def robustness_calculator(y_r):
+    R_list = [i for i in range(count_label)]
+    for j in range(count_label):
+        R_list[j] = np.empty((0, 1))
+    for j in range(count_label):
+        for i in range(0, count_show):
+            if y_r[i, 0] == j:
+                R_list[j] = np.vstack((R_list[j], y_r[i, 1]))
+        R_list[j] = (R_list[j])[R_list[j] > 0]
+        R_list[j] = np.sort(R_list[j], axis=-1)
+    r_list = np.ones((1, count_show))
+    r_list = r_list[0, 0: int(num_eval)]
+    for i in range(count_label):
+        R_list[i] = (R_list[i]).flatten()
+        R_list[i] = R_list[i][: int(num_eval)]
+        r_list = R_list[i] * r_list
+    index = (1 / num_eval) * np.arange(num_eval) + 2
+    robustness = np.sum(r_list / (index ** 10))*50
+    return robustness
