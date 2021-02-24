@@ -1,0 +1,151 @@
+import torch
+from sklearn import datasets  #加载数据集用
+from sklearn import model_selection   #数据集切分
+import torch.utils.data as Data   #分批次loader数据集使用
+import torch.nn as nn    #神经网络API
+import torch.optim as optim     #神经网络优化器
+import numpy as np     #数字格式转换
+import matplotlib.pyplot as plt  #数据可视化
+import cnn
+
+
+class train_mini_train():
+    '''构建训练集'''
+
+    def __init__(self):
+        # 加载手写数字数据集digits，有标签，class为1~10
+        self.X, self.y = \
+            datasets.load_digits(return_X_y=True)
+
+        print('样本总数：', len(self.X))
+        print('样本特征维度：', len(self.X[0]))
+
+        # 数据集切分
+        self.X_train, self.X_test, self.y_train, self.y_test = \
+            model_selection.train_test_split(self.X, self.y, random_state=0)
+
+        print('构建训练集样本总数：', len(self.y_train))
+
+    def __len__(self):
+        # 返回训练集数据量
+        return len(self.y_train)
+
+    def __getitem__(self, index):
+        return torch.tensor(self.X_train[index].reshape(1, 8, 8), dtype=torch.float32), self.y_train[index]
+
+
+class test_mini_test():
+    '''构建测试集'''
+
+    def __init__(self):
+        self.X, self.y = datasets.load_digits(return_X_y=True)
+        self.X_train, self.X_test, self.y_train, self.y_test = \
+            model_selection.train_test_split(self.X, self.y, random_state=0)
+
+        print('构建测试集样本总数：', len(self.y_test))
+
+    def __getitem__(self, index):
+        return torch.tensor(self.X_test[index].reshape(1, 8, 8), dtype=torch.float32), self.y_test[index]
+
+    def __len__(self):
+        return len(self.y_test)
+
+
+
+def plot_train_and_test_result(train_accs,test_accs):
+    epoches = np.arange(1,len(train_accs)+1,dtype=np.int32)
+    plt.plot(epoches,train_accs,label='train accuracy')
+    plt.plot(epoches,test_accs, label='test accuracy')
+    plt.xlabel('epoches')
+    plt.ylabel('accuracy')
+    plt.legend()
+
+
+def eval_on_dataloader(name, loader, len):
+    acc = 0.0
+    with torch.no_grad():
+        for data in loader:
+            images, labels = data
+            outputs = model(images)
+
+            # torch.max返回两个数值，一个[0]是最大值，一个[1]是最大值的下标
+            predict_y = torch.max(outputs, dim=1)[1]
+
+            acc += (predict_y == labels.long()).sum().item()
+        accurate = acc / len
+        return accurate
+
+
+def plot_loss_result(losses):
+    epoches = np.arange(1, len(losses) + 1, dtype=np.int32)
+    plt.plot(epoches, losses, label='loss')
+    plt.xlabel('epoches')
+    plt.ylabel('loss')
+    plt.legend()
+
+
+def printNetInfo(net):
+    '''输出神经网络结构的信息'''
+    for name,parameters in net.named_parameters():
+        print(name,":",parameters.size())
+
+
+batch_size = 6
+learning_rate = 3e-3
+epoches = 10
+
+# 载入训练集与测试集数据
+train_data = train_mini_train()
+test_data = test_mini_test()
+train_loader = Data.DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
+test_loader = Data.DataLoader(dataset=test_data, batch_size=batch_size, shuffle=True)
+
+# 载入网络结构
+model = cnn.SimpleNet()
+
+# 声明损失函数及优化器
+loss_fn = nn.CrossEntropyLoss()
+optim = optim.Adam(params=model.parameters(), lr=learning_rate)
+
+# 输出网络结构信息
+# printNetInfo(net)
+
+train_accs = []
+test_accs = []
+losses = []
+for epoch in range(epoches):
+    model.train()  # 训练
+    for step, data in enumerate(train_loader, start=0):
+        images, labels = data
+
+        optim.zero_grad()  # 优化器梯度清0
+        logits = model(images)  # 输入images 经过网络推断输出结果
+
+        loss = loss_fn(logits, labels.long())  # 计算损失函数
+        loss.backward()  # 反向传播求梯度
+        optim.step()  # 优化器进一步优化
+
+        rate = (step + 1) / len(train_loader)
+        a = "*" * int(rate * 50)
+        b = "." * int((1 - rate) * 50)
+        print("\repoch:%s train loss:%3.0f%%:%.4f" % (epoch, int(rate * 100), loss), end="  ")
+    losses.append(loss)
+
+    model.eval()  # 测试
+    train_acc = eval_on_dataloader("train", train_loader, train_data.__len__())
+    train_accs.append(train_acc)
+
+    test_acc = eval_on_dataloader("test", test_loader, test_data.__len__())
+    test_accs.append(test_acc)
+
+    print("train_acc:", train_acc, " test_acc:", test_acc)
+
+    # 模型训练损失可视化
+    plot_loss_result(losses)
+    plt.show()
+
+    # 训练集与测试集精度可视化
+    plot_train_and_test_result(train_accs, test_accs)
+    plt.show()
+
+torch.save(model.state_dict(), './params0.pth')
