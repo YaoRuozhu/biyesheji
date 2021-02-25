@@ -1,0 +1,80 @@
+import data
+import simclr
+import torch.nn as nn    #神经网络API
+import torch.optim as optim
+from argparse import Namespace
+import matplotlib.pyplot as plt
+import torch.utils.data as Data
+
+batch_size = 6
+learning_rate = 3e-3
+epoches = 10
+hparams = Namespace(
+    lr=0.000630957344480193,
+    epochs=10,
+    batch_size=160,
+    train_size=1000,
+    validation_size=200
+)
+
+# 载入训练集与测试集数据
+train_data = data.train_data
+train_ds = simclr.PretrainingDatasetWrapper(train_data, debug=False)
+train_loader = Data.DataLoader(dataset=train_ds, batch_size=batch_size, shuffle=True)
+test_data = data.test_data
+test_ds = simclr.PretrainingDatasetWrapper(test_data, debug=False)
+test_loader = Data.DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=True)
+test_loader = data.test_loader
+
+# 载入网络结构
+model = simclr.ImageEmbedding()
+
+
+def forward(self, X):
+    return self.model(X)
+
+# 声明损失函数及优化器
+loss_fn = simclr.ContrastiveLoss(hparams.batch_size)
+optim = optim.Adam(params=model.parameters(), lr=learning_rate)
+
+# 输出网络结构信息
+# printNetInfo(net)
+
+train_accs = []
+test_accs = []
+losses = []
+for epoch in range(epoches):
+    model.train()  # 训练
+    for step, data in enumerate(train_loader, start=0):
+        images, labels = data
+
+        optim.zero_grad()  # 优化器梯度清0
+        logits = model(images)  # 输入images 经过网络推断输出结果
+        embX, projectionX = forward(X)
+        embY, projectionY = forward(Y)
+        loss = loss_fn(projectionX, projectionY)  # 计算损失函数
+        loss.backward()  # 反向传播求梯度
+        optim.step()  # 优化器进一步优化
+
+        rate = (step + 1) / len(train_loader)
+        a = "*" * int(rate * 50)
+        b = "." * int((1 - rate) * 50)
+        print("\repoch:%s train loss:%3.0f%%:%.4f" % (epoch, int(rate * 100), loss), end="  ")
+    losses.append(loss)
+
+    model.eval()  # 测试
+    train_acc = data.eval_on_dataloader("train", train_loader, train_data.__len__())
+    train_accs.append(train_acc)
+
+    test_acc = data.eval_on_dataloader("test", test_loader, test_data.__len__())
+    test_accs.append(test_acc)
+
+    print("train_acc:", train_acc, " test_acc:", test_acc)
+
+    # 模型训练损失可视化
+    data.plot_loss_result(losses)
+    plt.show()
+
+    # 训练集与测试集精度可视化
+    data.plot_train_and_test_result(train_accs, test_accs)
+    plt.show()
