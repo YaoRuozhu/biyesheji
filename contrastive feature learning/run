@@ -50,8 +50,8 @@ for epoch in range(epoches):
 
         optim.zero_grad()  # 优化器梯度清0
         logits = model(images)  # 输入images 经过网络推断输出结果
-        embX, projectionX = forward(X)
-        embY, projectionY = forward(Y)
+        embX, projectionX = model(X)
+        embY, projectionY = model(Y)
         loss = loss_fn(projectionX, projectionY)  # 计算损失函数
         loss.backward()  # 反向传播求梯度
         optim.step()  # 优化器进一步优化
