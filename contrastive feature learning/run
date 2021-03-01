@@ -6,25 +6,24 @@ from argparse import Namespace
 import matplotlib.pyplot as plt
 import torch.utils.data as Data
 
-batch_size = 6
+batch_size = data.batch_size
 learning_rate = 3e-3
-epoches = 10
+epoches = 2
 hparams = Namespace(
     lr=0.000630957344480193,
     epochs=10,
-    batch_size=160,
+    batch_size=data.batch_size,
     train_size=1000,
     validation_size=200
 )
 
 # 载入训练集与测试集数据
 train_data = data.train_data
-train_ds = simclr.PretrainingDatasetWrapper(train_data, debug=False)
-train_loader = Data.DataLoader(dataset=train_ds, batch_size=batch_size, shuffle=True)
+#train_ds = simclr.PretrainingDatasetWrapper(train_data, debug=False)
+train_loader = Data.DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
 test_data = data.test_data
-test_ds = simclr.PretrainingDatasetWrapper(test_data, debug=False)
-test_loader = Data.DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=True)
-test_loader = data.test_loader
+#test_ds = simclr.PretrainingDatasetWrapper(test_data, debug=False)
+test_loader = Data.DataLoader(dataset=test_data, batch_size=batch_size, shuffle=True)
 
 # 载入网络结构
 model = simclr.ImageEmbedding()
@@ -45,11 +44,14 @@ test_accs = []
 losses = []
 for epoch in range(epoches):
     model.train()  # 训练
-    for step, data in enumerate(train_loader, start=0):
-        images, labels = data
-
+    for step, dataset in enumerate(train_loader, start=0):
+        images, labels = dataset
+        X = images
+        Y = images
+        y = labels
+        #(X,Y), y = (image, image),label
         optim.zero_grad()  # 优化器梯度清0
-        logits = model(images)  # 输入images 经过网络推断输出结果
+        #logits = model(images)  # 输入images 经过网络推断输出结果
         embX, projectionX = model(X)
         embY, projectionY = model(Y)
         loss = loss_fn(projectionX, projectionY)  # 计算损失函数
@@ -72,8 +74,8 @@ for epoch in range(epoches):
     print("train_acc:", train_acc, " test_acc:", test_acc)
 
     # 模型训练损失可视化
-    data.plot_loss_result(losses)
-    plt.show()
+    #data.plot_loss_result(losses)
+    #plt.show()
 
     # 训练集与测试集精度可视化
     data.plot_train_and_test_result(train_accs, test_accs)
