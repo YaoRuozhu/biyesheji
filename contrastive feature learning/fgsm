@@ -1,8 +1,22 @@
-import numpy as np
+from __future__ import print_function
+import torch
+import torch.nn.functional as F
+import cnn
 import dataset
-import torch.utils.data as Data
+import numpy as np
 
-# FGSM 攻击代码
+
+device = torch.device("cpu")
+model = cnn.SimpleNet().to(device)
+epsilons = [0, .05, .1, .15, .2, .25, .3]
+model.load_state_dict(torch.load('./params0.pth', map_location='cpu'))
+
+
+test_data = dataset.train_mini_train()
+test_loader = torch.utils.data.DataLoader(dataset=test_data, batch_size=1, shuffle=True)
+model.eval()
+
+# FGSM attack code
 def fgsm_attack(image, epsilon, data_grad):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
@@ -14,16 +28,7 @@ def fgsm_attack(image, epsilon, data_grad):
     return perturbed_image
 
 
-
-epsilons = [0, .05, .1, .15, .2, .25, .3]
-model = '/Users/meruozhu/Workspace/test/params0.pth'
-train_data = dataset.train_data
-train_loader = Data.DataLoader(dataset=train_data, batch_size=1, shuffle=True)
-test_data = dataset.test_data
-test_loader = Data.DataLoader(dataset=test_data, batch_size=1, shuffle=True)
-count_data = 1347
-
-def test( model, test_loader, epsilon ):
+def test(model, test_loader, epsilon):
 
     # Accuracy counter
     correct = 0
@@ -31,7 +36,6 @@ def test( model, test_loader, epsilon ):
 
     # Loop over all examples in test set
     for data, target in test_loader:
-
 
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
@@ -45,7 +49,7 @@ def test( model, test_loader, epsilon ):
             continue
 
         # Calculate the loss
-        loss = F.nll_loss(output, target)
+        loss = F.nll_loss(output, target.long())
 
         # Zero all existing gradients
         model.zero_grad()
@@ -69,12 +73,12 @@ def test( model, test_loader, epsilon ):
             # Special case for saving 0 epsilon examples
             if (epsilon == 0) and (len(adv_examples) < 5):
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex))
         else:
             # Save some adv examples for visualization later
             if len(adv_examples) < 5:
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex))
 
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(len(test_loader))
@@ -84,25 +88,10 @@ def test( model, test_loader, epsilon ):
     return final_acc, adv_examples
 
 
-
-
-
-def fgsm_data(model, epsilon):
-    data_fgsm = np.empty((0, 65))
-    for from_image, y in train_loader:
-        from_image = from_image.reshape(-1, 8, 8, 1)
-        y = y.reshape(-1, 1)
-        to_images = fgsm_attack(from_image, epsilon, from_image.grad.data)
-        to_images = to_images.reshape((-1, 64))
-        data_fgsm = np.vstack((data_fgsm, np.hstack((to_images, y))))
-    np.save('data_fgsm'+str(eps)+'.npy', data_fgsm)
-    return data_fgsm
-
-accuracies = []
-examples = []
+X = np.empty((0, 64))
+Y = np.empty((0))
 
 # Run test for each epsilon
-for eps in epsilons:
-    acc, ex = test(model, test_loader, eps)
-    accuracies.append(acc)
-    examples.append(ex)
+acc, ex = test(model, test_loader, 0.05)
+X = np.vstack((examples, ex))
+accuracies.append(acc)
