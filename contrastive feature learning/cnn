@@ -37,3 +37,23 @@ class SimpleNet(nn.Module):
         x = x.view(x.size(0), -1)  # 相当于Flatten
         x = self.fc(x)
         return x
+
+
+class SimpleNet1(nn.Module):
+
+    def __init__(self):
+        super(SimpleNet, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(64, 20),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(20, 20),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(20, 10),
+            nn.LeakyReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        x = self.model(x)
+
+        return x
