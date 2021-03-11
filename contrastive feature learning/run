@@ -1,4 +1,4 @@
-import data
+import dataset
 import simclr
 import torch.nn as nn    #神经网络API
 import torch.optim as optim
@@ -6,22 +6,22 @@ from argparse import Namespace
 import matplotlib.pyplot as plt
 import torch.utils.data as Data
 
-batch_size = data.batch_size
+batch_size = 10
 learning_rate = 3e-3
 epoches = 2
 hparams = Namespace(
     lr=0.000630957344480193,
     epochs=10,
-    batch_size=data.batch_size,
+    batch_size=batch_size,
     train_size=1000,
     validation_size=200
 )
 
 # 载入训练集与测试集数据
-train_data = data.train_data
+train_data = dataset.train_mini_train()
 #train_ds = simclr.PretrainingDatasetWrapper(train_data, debug=False)
 train_loader = Data.DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
-test_data = data.test_data
+test_data = dataset.test_mini_test()
 #test_ds = simclr.PretrainingDatasetWrapper(test_data, debug=False)
 test_loader = Data.DataLoader(dataset=test_data, batch_size=batch_size, shuffle=True)
 
@@ -44,8 +44,8 @@ test_accs = []
 losses = []
 for epoch in range(epoches):
     model.train()  # 训练
-    for step, dataset in enumerate(train_loader, start=0):
-        images, labels = dataset
+    for step, data in enumerate(train_loader, start=0):
+        images, labels = data
         X = images
         Y = images
         y = labels
@@ -65,10 +65,10 @@ for epoch in range(epoches):
     losses.append(loss)
 
     model.eval()  # 测试
-    train_acc = data.eval_on_dataloader("train", train_loader, train_data.__len__())
+    train_acc = dataset.eval_on_dataloader("train", train_loader, train_data.__len__())
     train_accs.append(train_acc)
 
-    test_acc = data.eval_on_dataloader("test", test_loader, test_data.__len__())
+    test_acc = dataset.eval_on_dataloader("test", test_loader, test_data.__len__())
     test_accs.append(test_acc)
 
     print("train_acc:", train_acc, " test_acc:", test_acc)
@@ -78,5 +78,5 @@ for epoch in range(epoches):
     #plt.show()
 
     # 训练集与测试集精度可视化
-    data.plot_train_and_test_result(train_accs, test_accs)
+    dataset.plot_train_and_test_result(train_accs, test_accs)
     plt.show()
