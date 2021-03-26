@@ -69,4 +69,3 @@ def printNetInfo(net):
     '''输出神经网络结构的信息'''
     for name,parameters in net.named_parameters():
         print(name,":",parameters.size())
-
