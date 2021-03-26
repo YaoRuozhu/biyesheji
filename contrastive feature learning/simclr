@@ -6,11 +6,12 @@ import dataset
 import cnn
 
 
-model = cnn.SimpleNet()
-model.load_state_dict(torch.load('./params0.pth'))
 train_data = dataset.train_mini_train()
+imgSize = (8, 8)
+model = cnn.SimpleNet(64)
+model.load_state_dict(torch.load('./params0.pth'))
 idx = 123
-batch_size = 10
+batch_size = 2
 
 
 class ContrastiveLossy(nn.Module):
@@ -82,6 +83,8 @@ class ContrastiveLoss(nn.Module):
 
         nominator = torch.exp(positives / self.temperature)
         denominator = self.negatives_mask * torch.exp(similarity_matrix / self.temperature)
+        #denominator = torch.exp(similarity_matrix[self.negatives_mask].reshape(
+            #similarity_matrix.shape[0], -1) / self.temperature)
 
         loss_partial = -torch.log(nominator / torch.sum(denominator, dim=1))
         loss = torch.sum(loss_partial) / (2 * self.batch_size)
@@ -101,11 +104,11 @@ class ImageEmbedding(nn.Module):
         def forward(self, x):
             return x
 
-    def __init__(self, embedding_size=100):
+    def __init__(self, embedding_size=10):
         super().__init__()
 
         base_model = model
-        internal_embedding_size = base_model.fc.in_features
+        internal_embedding_size = 20
         base_model.fc = ImageEmbedding.Identity()
 
         self.embedding = base_model
@@ -124,5 +127,3 @@ class ImageEmbedding(nn.Module):
         embedding = self.calculate_embedding(image)
         projection = self.projection(embedding)
         return embedding, projection
-
-
