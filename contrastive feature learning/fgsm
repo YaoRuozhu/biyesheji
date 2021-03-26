@@ -6,10 +6,10 @@ import dataset
 import numpy as np
 
 
-device = torch.device("cpu")
-model = cnn.SimpleNet().to(device)
+
+model = cnn.SimpleNet(64)
 epsilons = [0, .05, .1, .15, .2, .25, .3]
-model.load_state_dict(torch.load('./params0.pth', map_location='cpu'))
+model.load_state_dict(torch.load('./params0.pth'))
 
 
 test_data = dataset.train_mini_train()
