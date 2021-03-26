@@ -30,7 +30,7 @@ def eval_on_dataloader(name, loader, len):
 
 batch_size = 3
 learning_rate = 3e-3
-epoches = 50
+epoches = 2
 
 # 载入训练集与测试集数据
 train_data = dataset.train_mini_train()
@@ -41,7 +41,7 @@ test_loader = Data.DataLoader(dataset=test_data, batch_size=batch_size, shuffle=
 
 
 # 载入网络结构
-model = cnn.SimpleNet()
+model = cnn.SimpleNet(64)
 
 # 声明损失函数及优化器
 loss_fn = nn.CrossEntropyLoss()
