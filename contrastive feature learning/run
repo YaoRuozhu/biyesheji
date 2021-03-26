@@ -5,8 +5,9 @@ import torch.optim as optim
 from argparse import Namespace
 import matplotlib.pyplot as plt
 import torch.utils.data as Data
+import fgsm
 
-batch_size = 10
+batch_size = 2
 learning_rate = 3e-3
 epoches = 2
 hparams = Namespace(
@@ -45,16 +46,14 @@ losses = []
 for epoch in range(epoches):
     model.train()  # 训练
     for step, data in enumerate(train_loader, start=0):
-        images, labels = data
+        images, labels = data[0]
         X = images
-        Y = images
-        y = labels
-        #(X,Y), y = (image, image),label
+        data_grad = X.grad.data
+        Y = fgsm.fgsm_attack(X, 0.1, data_grad)
         optim.zero_grad()  # 优化器梯度清0
-        #logits = model(images)  # 输入images 经过网络推断输出结果
         embX, projectionX = model(X)
         embY, projectionY = model(Y)
-        loss = loss_fn(projectionX, projectionY)  # 计算损失函数
+        loss = loss_fn(projectionX.view(1,-1), projectionY.view(1,-1))  # 计算损失函数
         loss.backward()  # 反向传播求梯度
         optim.step()  # 优化器进一步优化
 
