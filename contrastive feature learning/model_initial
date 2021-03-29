@@ -87,6 +87,9 @@ for epoch in range(epoches):
 
     # 训练集与测试集精度可视化
     plot_train_and_test_result(train_accs, test_accs)
-    plt.show()
+    
+    # plt.show()
 
-torch.save(model.state_dict(), './params0.pth')
+#保存模型成文件后再训练不会影响原有模型
+# torch.save(model.state_dict(), './params0.pth')
+torch.save(model,"model-0.pt")
