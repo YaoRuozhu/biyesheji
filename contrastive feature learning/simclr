@@ -82,6 +82,7 @@ class ContrastiveLoss(nn.Module):
         positives = torch.cat([sim_ij, sim_ji], dim=0)
 
         nominator = torch.exp(positives / self.temperature)
+        assert self.negatives_mask.shape==similarity_matrix.shape,str(similarity_matrix.shape)+" != "+str(self.negatives_mask.shape)
         denominator = self.negatives_mask * torch.exp(similarity_matrix / self.temperature)
         #denominator = torch.exp(similarity_matrix[self.negatives_mask].reshape(
             #similarity_matrix.shape[0], -1) / self.temperature)
