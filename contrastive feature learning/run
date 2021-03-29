@@ -6,10 +6,11 @@ from argparse import Namespace
 import matplotlib.pyplot as plt
 import torch.utils.data as Data
 import fgsm
+import torch
 
 batch_size = 2
 learning_rate = 3e-3
-epoches = 2
+epoches = 5
 hparams = Namespace(
     lr=0.000630957344480193,
     epochs=10,
@@ -17,6 +18,7 @@ hparams = Namespace(
     train_size=1000,
     validation_size=200
 )
+
 
 # 载入训练集与测试集数据
 train_data = dataset.train_mini_train()
@@ -28,7 +30,7 @@ test_loader = Data.DataLoader(dataset=test_data, batch_size=batch_size, shuffle=
 
 # 载入网络结构
 model = simclr.ImageEmbedding()
-
+attackModel=torch.load("./model-0.pt")
 
 def forward(self, X):
     return self.model(X)
@@ -43,17 +45,28 @@ optim = optim.Adam(params=model.parameters(), lr=learning_rate)
 train_accs = []
 test_accs = []
 losses = []
+loss_attack = nn.CrossEntropyLoss()
 for epoch in range(epoches):
     model.train()  # 训练
     for step, data in enumerate(train_loader, start=0):
-        images, labels = data[0]
+        images, labels = data
+        #新的batch达不到预设的数量要求
+        if images.size(0)!=train_loader.batch_size:
+            continue
         X = images
-        data_grad = X.grad.data
+        #需要计算全部节点的梯度
+        X.requires_grad_()
+        #backward的过程计算梯度
+        loss_attack(attackModel(X),labels.long()).backward()
+        #X的梯度
+        data_grad = X.grad
+        #下面的backwards不计算梯度
+        X.requires_grad=False
         Y = fgsm.fgsm_attack(X, 0.1, data_grad)
         optim.zero_grad()  # 优化器梯度清0
         embX, projectionX = model(X)
         embY, projectionY = model(Y)
-        loss = loss_fn(projectionX.view(1,-1), projectionY.view(1,-1))  # 计算损失函数
+        loss = loss_fn(projectionX, projectionY)  # 计算损失函数
         loss.backward()  # 反向传播求梯度
         optim.step()  # 优化器进一步优化
 
@@ -64,10 +77,11 @@ for epoch in range(epoches):
     losses.append(loss)
 
     model.eval()  # 测试
-    train_acc = dataset.eval_on_dataloader("train", train_loader, train_data.__len__())
+    model.aux_logits = False
+    train_acc = dataset.TestAccuracy(model, train_loader)
     train_accs.append(train_acc)
 
-    test_acc = dataset.eval_on_dataloader("test", test_loader, test_data.__len__())
+    test_acc = dataset.TestAccuracy(model, test_loader)
     test_accs.append(test_acc)
 
     print("train_acc:", train_acc, " test_acc:", test_acc)
