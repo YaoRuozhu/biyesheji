@@ -7,9 +7,10 @@ import numpy as np
 
 
 
-model = cnn.SimpleNet(64)
+# model = cnn.SimpleNet(64)
+model=torch.load("./model-0.pt")
 epsilons = [0, .05, .1, .15, .2, .25, .3]
-model.load_state_dict(torch.load('./params0.pth'))
+# model.load_state_dict(torch.load('./params0.pth'))
 
 
 test_data = dataset.train_mini_train()
@@ -88,10 +89,10 @@ def test(model, test_loader, epsilon):
     return final_acc, adv_examples
 
 
-X = np.empty((0, 64))
-Y = np.empty((0))
+# X = np.empty((0, 64))
+# Y = np.empty((0))
 
-# Run test for each epsilon
-acc, ex = test(model, test_loader, 0.05)
-X = np.vstack((examples, ex))
-accuracies.append(acc)
+# # Run test for each epsilon
+# acc, ex = test(model, test_loader, 0.05)
+# X = np.vstack((examples, ex))
+# accuracies.append(acc)
