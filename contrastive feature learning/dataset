@@ -3,6 +3,7 @@ from sklearn import datasets  #加载数据集用
 from sklearn import model_selection   #数据集切分
 import matplotlib.pyplot as plt  #数据可视化
 import numpy as np     #数字格式转换
+import torch.nn as nn
 
 class train_mini_train():
     '''构建训练集'''
@@ -69,3 +70,30 @@ def printNetInfo(net):
     '''输出神经网络结构的信息'''
     for name,parameters in net.named_parameters():
         print(name,":",parameters.size())
+
+def eval_on_dataloader(model,loader,len):
+    acc = 0.0
+    with torch.no_grad():
+        for data in loader:
+            images, labels = data
+            outputs = model(images)
+
+            # torch.max返回两个数值，一个[0]是最大值，一个[1]是最大值的下标
+            predict_y = torch.max(outputs, dim=1)[1]
+
+            acc += (predict_y == labels.long()).sum().item()
+        accurate = acc / len
+        return accurate
+
+
+def TestAccuracy(model, testLoader):
+    softmax = nn.Softmax(dim=1)
+    acc = 0
+    with torch.no_grad():
+        for data, target in testLoader:
+            data = data
+            target = target.long()
+            output = model(data)
+            predict = torch.argmax(softmax(output), dim=1)
+            acc += (predict == target).sum().item()
+        return acc/len(testLoader.dataset)
